@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Menu Restoran 2000 Tiga</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <style>
+        body { font-family: sans-serif; background-color: #f8fafc; }
+        .hide-scroll::-webkit-scrollbar { display: none; }
+        .modal-enter { opacity: 0; transform: scale(0.9); }
+        .modal-enter-active { opacity: 1; transform: scale(1); transition: all 0.2s; }
+        .modal-exit { opacity: 1; transform: scale(1); }
+        .modal-exit-active { opacity: 0; transform: scale(0.9); transition: all 0.2s; }
+    </style>
+</head>
+<body class="text-slate-800 pb-24">
+
+    <header class="bg-white shadow-sm sticky top-0 z-40">
+        <div class="p-4 flex items-center gap-3">
+            <img src="assets/icon.png" alt="Logo 2000 Tiga" class="w-10 h-10 rounded-full object-cover shadow-sm border border-slate-200">
+            <div>
+                <h1 class="text-lg font-black text-slate-800 leading-tight">Restoran 2000 Tiga</h1>
+                <p class="text-xs text-slate-500">Pesan dari meja Anda</p>
+            </div>
+        </div>
+        <div class="flex gap-2 overflow-x-auto hide-scroll px-4 pb-3" id="category-tabs-container"></div>
+    </header>
+
+    <main class="p-4 grid grid-cols-2 gap-3" id="menu-list"></main>
+
+    <div id="floating-cart" class="fixed bottom-6 left-4 right-4 z-40 hidden">
+        <button onclick="openCart()" class="w-full bg-blue-600 text-white p-4 rounded-2xl shadow-lg shadow-blue-600/30 flex justify-between items-center transform transition-transform active:scale-95">
+            <div class="flex items-center gap-2">
+                <div class="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center font-bold" id="cart-count">0</div>
+                <span class="font-bold">Lihat Pesanan</span>
+            </div>
+            <span class="font-black text-lg" id="cart-total-btn">Rp 0</span>
+        </button>
+    </div>
+
+    <div id="modal-cart" class="fixed inset-0 bg-slate-900/60 z-50 hidden flex-col justify-end backdrop-blur-sm">
+        <div id="modal-cart-content" class="bg-white w-full rounded-t-3xl max-h-[85vh] flex flex-col modal-enter">
+            <div class="p-4 border-b border-slate-100 flex justify-between items-center">
+                <h3 class="font-bold text-lg text-slate-800">Keranjang Saya</h3>
+                <button onclick="closeCart()" class="w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center text-slate-600 font-bold">&times;</button>
+            </div>
+            <div class="p-4 overflow-y-auto flex-1 hide-scroll" id="cart-items-container"></div>
+            <div class="p-4 bg-white border-t border-slate-100 shadow-[0_-10px_15px_-3px_rgba(0,0,0,0.05)]">
+                <div class="flex justify-between items-center mb-4">
+                    <span class="font-bold text-slate-600">Total Pembayaran</span>
+                    <span class="text-2xl font-black text-blue-600" id="cart-total-modal">Rp 0</span>
+                </div>
+                <button onclick="openCheckout()" class="w-full py-4 bg-blue-600 text-white rounded-xl font-bold shadow-md active:bg-blue-700">Checkout Sekarang</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="modal-checkout" class="fixed inset-0 bg-slate-900/60 z-50 hidden flex-col justify-center items-center p-4 backdrop-blur-sm">
+        <div id="modal-checkout-content" class="bg-white w-full max-w-sm rounded-3xl overflow-hidden modal-enter max-h-[90vh] flex flex-col">
+            <div class="p-6 overflow-y-auto hide-scroll">
+                <h3 class="font-black text-xl text-slate-800 mb-1">Data Pemesan</h3>
+                <p class="text-sm text-slate-500 mb-4">Kami akan mengantar pesanan ke meja ini.</p>
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-bold text-slate-700 mb-2">Nama Anda</label>
+                        <input type="text" id="input-nama" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium" placeholder="Contoh: Budi">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-bold text-slate-700 mb-2">Pilih Meja / Area</label>
+                        <select id="input-meja" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 font-bold text-slate-800 appearance-none">
+                            <option value="">-- Pilih Meja --</option>
+                            <script>
+                                for(let i=1; i<=30; i++) document.write(`<option value="Meja ${i}">Meja ${i}</option>`);
+                            </script>
+                        </select>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-bold text-slate-700 mb-2">Metode Pembayaran</label>
+                        <select id="input-pembayaran" onchange="toggleQrisDisplay()" class="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 font-bold text-slate-800 appearance-none">
+                            <option value="Tunai di Kasir">Bayar Tunai / EDC di Meja Kasir</option>
+                            <option value="QRIS">Bayar Langsung Pakai QRIS</option>
+                        </select>
+                    </div>
+
+                    <div id="qris-area" class="hidden flex-col items-center p-4 bg-blue-50 border border-blue-100 rounded-xl mt-2 text-center">
+                        <p class="text-xs font-bold text-blue-800 mb-2">Scan QRIS di bawah ini:</p>
+                        <img src="assets/qrcode.jpeg" alt="QRIS 2000 Tiga" class="w-48 h-48 object-cover rounded-xl shadow-sm mb-3 bg-white p-2">
+                        
+                        <a href="assets/qrcode.jpeg" download="QRIS-2000-Tiga.png" class="mb-4 text-xs font-bold text-blue-600 border border-blue-600 px-4 py-1.5 rounded-full hover:bg-blue-600 hover:text-white transition-colors">
+                            ⬇️ Simpan Gambar QRIS
+                        </a>
+
+                        <p class="text-xs text-slate-600 mb-1">Total yang harus ditransfer:</p>
+                        <p class="text-xl font-black text-blue-700" id="qris-total-text">Rp 0</p>
+                        
+                        <div class="w-full mt-4 p-3 bg-white rounded-lg border border-slate-200 text-left">
+                            <label class="block text-xs font-bold text-slate-700 mb-2">Upload Bukti Transfer <span class="text-red-500">*</span></label>
+                            <input type="file" id="input-bukti" accept="image/*" class="w-full text-xs file:mr-2 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100">
+                            <input type="hidden" id="base64-bukti" value=""> </div>
+                    </div>
+                </div>
+            </div>
+            <div class="p-4 flex gap-2 border-t border-slate-100 bg-slate-50 shrink-0">
+                <button onclick="closeCheckout()" class="flex-1 py-3 bg-white border border-slate-300 text-slate-700 rounded-xl font-bold">Batal</button>
+                <button onclick="showConfirmation()" class="flex-1 py-3 bg-blue-600 text-white rounded-xl font-bold shadow-md">Lanjut</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="modal-confirm" class="fixed inset-0 bg-slate-900/60 z-50 hidden flex-col justify-center items-center p-4 backdrop-blur-sm">
+        <div id="modal-confirm-content" class="bg-white w-full max-w-sm rounded-3xl p-6 text-center modal-enter">
+            <div class="w-16 h-16 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-4 text-yellow-500">
+                <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+            </div>
+            <h3 class="font-black text-xl text-slate-800 mb-2">Satu Langkah Lagi!</h3>
+            <p id="teks-konfirmasi" class="text-sm text-slate-600 mb-6 leading-relaxed">...</p>
+            <div class="flex gap-2">
+                <button onclick="hideModal('modal-confirm', 'modal-confirm-content')" class="flex-1 py-3 bg-slate-100 text-slate-700 rounded-xl font-bold">Kembali</button>
+                <button onclick="sendOrderToKasir()" class="flex-1 py-3 bg-green-600 text-white rounded-xl font-bold shadow-md flex justify-center items-center gap-2" id="btn-final-setuju">
+                    Kirim Pesanan
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div id="modal-success" class="fixed inset-0 bg-slate-900/60 z-50 hidden flex-col justify-center items-center p-4 backdrop-blur-sm">
+        <div class="bg-white w-full max-w-sm rounded-3xl p-6 text-center transform transition-all scale-100">
+            <div class="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4 text-blue-600">
+                <svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+            </div>
+            <h3 class="font-black text-2xl text-slate-800 mb-2">Pesanan Terkirim!</h3>
+            <p class="text-sm text-slate-500 mb-6">Mohon tunggu sebentar di meja Anda. Tim kami sedang menuju ke arah Anda.</p>
+            <button onclick="resetMenuAfterSuccess()" class="w-full py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold transition-colors">
+                Tutup & Kembali
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // ==========================================
+        // 1. KONEKSI FIREBASE
+        // ==========================================
+        const firebaseConfig = {
+            apiKey: "AIzaSyDEf8jEFFiGRkh7a6ZPDfLnYd-QpH9z5yE",
+            authDomain: "resto-2000-tiga.firebaseapp.com",
+            databaseURL: "https://resto-2000-tiga-default-rtdb.asia-southeast1.firebasedatabase.app",
+            projectId: "resto-2000-tiga",
+            storageBucket: "resto-2000-tiga.firebasestorage.app",
+            messagingSenderId: "498571945488",
+            appId: "1:498571945488:web:e9a26ee10bf95d8eb7cc95"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
+        // ==========================================
+        // 2. DATA MASTER MENU (97 Menu)
+        // ==========================================
+        const menuItems = [
+            { id: 1, name: 'Soto Ayam', price: 17000, color: '#eab308', category: 'makanan' },
+            { id: 2, name: 'Soto Daging', price: 20000, color: '#eab308', category: 'makanan' },
+            { id: 3, name: 'Soto Campur', price: 25000, color: '#eab308', category: 'makanan' },
+            { id: 4, name: 'Nasi Putih', price: 7000, color: '#9ca3af', category: 'makanan' },
+            { id: 5, name: 'Sate Ayam Kecap/Kacang', price: 20000, color: '#f97316', category: 'makanan' },
+            { id: 6, name: 'Sate Kambing Kecap/Kacang', price: 35000, color: '#f97316', category: 'makanan' },
+            { id: 7, name: 'Sate Kambing Kelatak', price: 35000, color: '#f97316', category: 'makanan' },
+            { id: 8, name: 'Ayam Goreng Crispy', price: 23000, color: '#ef4444', category: 'makanan' },
+            { id: 9, name: 'Ayam Goreng', price: 30000, color: '#ef4444', category: 'makanan' },
+            { id: 10, name: 'Ayam Goreng Istimewa', price: 30000, color: '#ef4444', category: 'makanan' },
+            { id: 11, name: 'Ayam Goreng Kremes', price: 33000, color: '#ef4444', category: 'makanan' },
+            { id: 12, name: 'Ayam Saus Wijen', price: 25000, color: '#ef4444', category: 'makanan' },
+            { id: 13, name: 'Ayam Bakar Istimewa', price: 35000, color: '#ef4444', category: 'makanan' },
+            { id: 14, name: 'Ayam Bakar Madu', price: 33000, color: '#ef4444', category: 'makanan' },
+            { id: 15, name: 'Ayam Bakar Kecap', price: 35000, color: '#ef4444', category: 'makanan' },
+            { id: 16, name: 'Ayam Lada Hitam', price: 25000, color: '#ef4444', category: 'makanan' },
+            { id: 17, name: 'Ayam Salju', price: 30000, color: '#ef4444', category: 'makanan' },
+            { id: 18, name: 'Bebek Goreng', price: 33000, color: '#b91c1c', category: 'makanan' },
+            { id: 19, name: 'Bebek Goreng Istimewa', price: 37000, color: '#b91c1c', category: 'makanan' },
+            { id: 20, name: 'Bebek Bakar Madu', price: 37000, color: '#b91c1c', category: 'makanan' },
+            { id: 21, name: 'Bebek Bakar Kecap', price: 35000, color: '#b91c1c', category: 'makanan' },
+            { id: 22, name: 'Bebek Kremes', price: 35000, color: '#b91c1c', category: 'makanan' },
+            { id: 23, name: 'Bebek Remuk Gongso', price: 37000, color: '#b91c1c', category: 'makanan' },
+            { id: 24, name: 'Bebek Bakar Istimewa', price: 37000, color: '#b91c1c', category: 'makanan' },
+            { id: 25, name: 'Tongseng Ayam', price: 32000, color: '#7f1d1d', category: 'makanan' },
+            { id: 26, name: 'Tongseng Kambing', price: 37000, color: '#7f1d1d', category: 'makanan' },
+            { id: 27, name: 'Tongseng Sapi', price: 37000, color: '#7f1d1d', category: 'makanan' },
+            { id: 28, name: 'Tengkleng Kambing', price: 35000, color: '#7f1d1d', category: 'makanan' },
+            { id: 29, name: 'Gulai Kambing', price: 35000, color: '#7f1d1d', category: 'makanan' },
+            { id: 30, name: 'Gulai Sapi', price: 37000, color: '#7f1d1d', category: 'makanan' },
+            { id: 31, name: 'Nasgor Kampung', price: 22000, color: '#f59e0b', category: 'makanan' },
+            { id: 32, name: 'Nasgor Ayam Pedas', price: 24000, color: '#f59e0b', category: 'makanan' },
+            { id: 33, name: 'Nasgor Spesial', price: 26000, color: '#f59e0b', category: 'makanan' },
+            { id: 34, name: 'Nasgor Kambing Spesial', price: 30000, color: '#f59e0b', category: 'makanan' },
+            { id: 35, name: 'Nasgor Mawut', price: 26000, color: '#f59e0b', category: 'makanan' },
+            { id: 36, name: 'Nasgor Yangzhou', price: 27000, color: '#f59e0b', category: 'makanan' },
+            { id: 37, name: 'Nasgor Ikan Asin', price: 28000, color: '#f59e0b', category: 'makanan' },
+            { id: 38, name: 'Mie Goreng Spesial', price: 25000, color: '#d97706', category: 'makanan' },
+            { id: 39, name: 'Mie Kuah Sapi', price: 25000, color: '#d97706', category: 'makanan' },
+            { id: 40, name: 'Mie Kari Kambing', price: 26000, color: '#d97706', category: 'makanan' },
+            { id: 41, name: 'Kwetiau Spesial', price: 28000, color: '#d97706', category: 'makanan' },
+            { id: 42, name: 'Kwetiau Ayam', price: 25000, color: '#d97706', category: 'makanan' },
+            { id: 43, name: 'Ifumie', price: 25000, color: '#d97706', category: 'makanan' },
+            { id: 44, name: 'Soun Goreng Spesial', price: 23000, color: '#d97706', category: 'makanan' },
+            { id: 45, name: 'Kwetiau Kuah Spesial', price: 30000, color: '#d97706', category: 'makanan' },
+            { id: 46, name: 'Bakwan Sayur', price: 10000, color: '#84cc16', category: 'makanan' },
+            { id: 47, name: 'Bakwan Jagung', price: 10000, color: '#84cc16', category: 'makanan' },
+            { id: 48, name: 'Tahu Isi', price: 10000, color: '#84cc16', category: 'makanan' },
+            { id: 49, name: 'Tempe Mendoan', price: 10000, color: '#84cc16', category: 'makanan' },
+            { id: 50, name: 'Tahu Cabe Garam', price: 15000, color: '#84cc16', category: 'makanan' },
+            { id: 51, name: 'Tempe Cabe Garam', price: 15000, color: '#84cc16', category: 'makanan' },
+            { id: 52, name: 'Sambal Terasi', price: 5000, color: '#dc2626', category: 'makanan' },
+            { id: 53, name: 'Sambal Korek Spesial', price: 5000, color: '#dc2626', category: 'makanan' },
+            { id: 54, name: 'Sambal Bawang', price: 5000, color: '#dc2626', category: 'makanan' },
+            { id: 55, name: 'Telur Mata Sapi', price: 10000, color: '#22c55e', category: 'makanan' },
+            { id: 56, name: 'Telur Dadar', price: 10000, color: '#22c55e', category: 'makanan' },
+            { id: 57, name: 'Kangkung Tumis', price: 15000, color: '#22c55e', category: 'makanan' },
+            { id: 58, name: 'Kangkung Balacan', price: 15000, color: '#22c55e', category: 'makanan' },
+            { id: 59, name: 'Buncis Bawang Putih', price: 20000, color: '#22c55e', category: 'makanan' },
+            { id: 60, name: 'Tauge Ikan Asin', price: 20000, color: '#22c55e', category: 'makanan' },
+            { id: 61, name: 'Capcai', price: 22000, color: '#22c55e', category: 'makanan' },
+            { id: 62, name: 'Pakcoy BP', price: 21000, color: '#22c55e', category: 'makanan' },
+            { id: 63, name: 'Pakcoy Saus Tiram', price: 25000, color: '#22c55e', category: 'makanan' },
+            { id: 64, name: 'Sizzling Sate Ayam', price: 35000, color: '#f43f5e', category: 'makanan' },
+            { id: 65, name: 'Sizzling Sate Kambing', price: 40000, color: '#f43f5e', category: 'makanan' },
+            { id: 66, name: 'Sizzling Sate Sapi', price: 45000, color: '#f43f5e', category: 'makanan' },
+            { id: 67, name: 'Hotplate Ayam BBQ', price: 45000, color: '#f43f5e', category: 'makanan' },
+            { id: 68, name: 'Hotplate Sapi BBQ', price: 35000, color: '#f43f5e', category: 'makanan' },
+            { id: 69, name: 'Hotplate Tahu', price: 33000, color: '#f43f5e', category: 'makanan' },
+            { id: 70, name: 'Fuyunghai', price: 32000, color: '#f43f5e', category: 'makanan' },
+            { id: 71, name: 'Sapo Tahu Ayam', price: 35000, color: '#f43f5e', category: 'makanan' },
+            { id: 72, name: 'Ayam Szechuan', price: 36000, color: '#f43f5e', category: 'makanan' },
+            { id: 73, name: 'Tumis Sapi Cabe Ijo', price: 45000, color: '#f43f5e', category: 'makanan' },
+            { id: 74, name: 'Tumis Sapi Lada Hitam', price: 55000, color: '#f43f5e', category: 'makanan' },
+            { id: 75, name: 'Jus Alpukat', price: 15000, color: '#0ea5e9', category: 'minuman' },
+            { id: 76, name: 'Jus Sirsak', price: 15000, color: '#0ea5e9', category: 'minuman' },
+            { id: 77, name: 'Jus Melon', price: 15000, color: '#0ea5e9', category: 'minuman' },
+            { id: 78, name: 'Jus Jeruk', price: 15000, color: '#0ea5e9', category: 'minuman' },
+            { id: 79, name: 'Jus Semangka', price: 15000, color: '#0ea5e9', category: 'minuman' },
+            { id: 80, name: 'Jus Jambu', price: 15000, color: '#0ea5e9', category: 'minuman' },
+            { id: 81, name: 'Mix Vegetable Jus', price: 18000, color: '#0ea5e9', category: 'minuman' },
+            { id: 82, name: 'Es Teh Tawar', price: 8000, color: '#0ea5e9', category: 'minuman' },
+            { id: 83, name: 'Es Teh Manis', price: 8000, color: '#0ea5e9', category: 'minuman' },
+            { id: 84, name: 'Es Jeruk Peras', price: 13000, color: '#0ea5e9', category: 'minuman' },
+            { id: 85, name: 'Es Jeruk Nipis', price: 13000, color: '#0ea5e9', category: 'minuman' },
+            { id: 86, name: 'Es Batu', price: 5000, color: '#0ea5e9', category: 'minuman' },
+            { id: 87, name: 'Air Mineral', price: 10000, color: '#0ea5e9', category: 'minuman' },
+            { id: 88, name: 'Teh Manis Panas', price: 7000, color: '#c2410c', category: 'minuman' },
+            { id: 89, name: 'Teh Tawar Panas', price: 7000, color: '#c2410c', category: 'minuman' },
+            { id: 90, name: 'Jeruk Peras Panas', price: 12000, color: '#c2410c', category: 'minuman' },
+            { id: 91, name: 'Jeruk Nipis Panas', price: 12000, color: '#c2410c', category: 'minuman' },
+            { id: 92, name: 'Jahe Susu Serai', price: 14000, color: '#c2410c', category: 'minuman' },
+            { id: 93, name: 'Jahe Jeruk', price: 14000, color: '#c2410c', category: 'minuman' },
+            { id: 94, name: 'Wedang Uwuh', price: 14000, color: '#c2410c', category: 'minuman' },
+            { id: 95, name: 'Wedang Pethok', price: 14000, color: '#c2410c', category: 'minuman' },
+            { id: 96, name: 'Wedang Jahe', price: 14000, color: '#c2410c', category: 'minuman' },
+            { id: 97, name: 'Jahe Serai', price: 14000, color: '#c2410c', category: 'minuman' }
+        ];
+
+        let cart = [];
+        let currentCat = 'semua';
+
+        // --- DAFTAR KELOMPOK MENU ---
+        const subCategories = [
+            { id: 'semua', label: 'Semua Menu' },
+            { id: 'soto', label: 'Aneka Soto' },
+            { id: 'nasi', label: 'Nasi Putih' },
+            { id: 'sate', label: 'Aneka Sate' },
+            { id: 'ayam', label: 'Aneka Ayam' },
+            { id: 'bebek', label: 'Aneka Bebek' },
+            { id: 'tongseng_gulai', label: 'Tongseng & Gulai' },
+            { id: 'nasgor', label: 'Nasi Goreng' },
+            { id: 'mie', label: 'Aneka Mie' },
+            { id: 'gorengan_sambal', label: 'Gorengan & Sambal' },
+            { id: 'sayuran', label: 'Aneka Sayuran' },
+            { id: 'chinese', label: 'Chinese Food' },
+            { id: 'minuman_dingin', label: 'Minuman Dingin' },
+            { id: 'minuman_panas', label: 'Minuman Panas' }
+        ];
+
+        // --- PENGELOMPOKAN OTOMATIS BERDASARKAN ID ---
+        function getKelompokMenu(id) {
+            if (id >= 1 && id <= 3) return 'soto';
+            if (id === 4) return 'nasi';
+            if (id >= 5 && id <= 7) return 'sate';
+            if (id >= 8 && id <= 17) return 'ayam';
+            if (id >= 18 && id <= 24) return 'bebek';
+            if (id >= 25 && id <= 30) return 'tongseng_gulai';
+            if (id >= 31 && id <= 37) return 'nasgor';
+            if (id >= 38 && id <= 45) return 'mie';
+            if (id >= 46 && id <= 54) return 'gorengan_sambal';
+            if (id >= 55 && id <= 63) return 'sayuran';
+            if (id >= 64 && id <= 74) return 'chinese';
+            if (id >= 75 && id <= 87) return 'minuman_dingin';
+            if (id >= 88 && id <= 97) return 'minuman_panas';
+            return 'semua';
+        }
+
+        // ==========================================
+        // 3. RENDER TAMPILAN MENU & KATEGORI
+        // ==========================================
+        function renderCategoryTabs() {
+            const container = document.getElementById('category-tabs-container');
+            if(!container) return;
+            container.innerHTML = '';
+            
+            subCategories.forEach(cat => {
+                const isActive = currentCat === cat.id;
+                const activeClass = isActive 
+                    ? "px-4 py-1.5 rounded-full text-sm font-bold bg-slate-800 text-white shrink-0 shadow-md transition-colors"
+                    : "px-4 py-1.5 rounded-full text-sm font-bold bg-white text-slate-600 shrink-0 border border-slate-200 shadow-sm transition-colors";
+                
+                container.innerHTML += `<button onclick="filterCat('${cat.id}')" class="${activeClass}">${cat.label}</button>`;
+            });
+        }
+
+        function filterCat(catId) {
+            currentCat = catId;
+            renderCategoryTabs();
+            renderMenu();
+        }
+
+        function renderMenu() {
+            const container = document.getElementById('menu-list');
+            if(!container) return;
+            container.innerHTML = '';
+            
+            const filtered = currentCat === 'semua' 
+                ? menuItems 
+                : menuItems.filter(m => getKelompokMenu(m.id) === currentCat);
+            
+            filtered.forEach(item => {
+                container.innerHTML += `
+                    <div class="bg-white rounded-2xl p-3 shadow-sm border border-slate-100 flex flex-col h-full">
+                        <div class="w-10 h-10 rounded-lg flex items-center justify-center text-white font-bold mb-3" style="background-color: ${item.color}">${item.name.charAt(0)}</div>
+                        <h3 class="font-bold text-slate-800 text-sm leading-tight flex-1 mb-1">${item.name}</h3>
+                        <p class="text-blue-600 font-black text-sm mb-3">Rp ${item.price.toLocaleString('id-ID')}</p>
+                        <button onclick="addToCart(${item.id})" class="w-full py-2 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-xl text-xs font-bold transition-colors">Tambah</button>
+                    </div>
+                `;
+            });
+        }
+
+        // ==========================================
+        // 4. SISTEM MANAJEMEN KERANJANG
+        // ==========================================
+        function addToCart(id) {
+            const item = menuItems.find(m => m.id === id);
+            const exist = cart.find(c => c.id === id);
+            if(exist) exist.qty += 1; else cart.push({...item, qty: 1});
+            updateCartUI();
+        }
+
+        function changeQty(id, delta) {
+            const item = cart.find(c => c.id === id);
+            if(item) {
+                item.qty += delta;
+                if(item.qty <= 0) cart = cart.filter(c => c.id !== id);
+                updateCartUI();
+                renderCartModal();
+            }
+        }
+
+        function updateCartUI() {
+            const floatCart = document.getElementById('floating-cart');
+            if(cart.length > 0) {
+                floatCart.classList.remove('hidden');
+                let count = 0, total = 0;
+                cart.forEach(c => { count += c.qty; total += (c.price * c.qty); });
+                document.getElementById('cart-count').innerText = count;
+                document.getElementById('cart-total-btn').innerText = `Rp ${total.toLocaleString('id-ID')}`;
+                document.getElementById('cart-total-modal').innerText = `Rp ${total.toLocaleString('id-ID')}`;
+            } else {
+                floatCart.classList.add('hidden');
+                closeCart();
+            }
+        }
+
+        function renderCartModal() {
+            const container = document.getElementById('cart-items-container');
+            if(!container) return;
+            container.innerHTML = '';
+            
+            cart.forEach(item => {
+                const currentSpice = item.spice || '';
+                const currentNote = item.note || '';
+                const showSpice = item.category === 'makanan' && item.id !== 4;
+
+                let spiceHtml = '';
+                if (showSpice) {
+                    spiceHtml = `
+                        <div class="flex gap-4 items-center px-1 mb-2">
+                            <label class="flex items-center gap-1.5 text-xs font-bold text-slate-600 cursor-pointer">
+                                <input type="radio" name="spice_${item.id}" value="Tidak Pedas" onchange="updateItemSpice(${item.id}, this.value)" class="w-4 h-4 text-blue-600 focus:ring-blue-500" ${currentSpice === 'Tidak Pedas' ? 'checked' : ''}>
+                                Tidak Pedas
+                            </label>
+                            <label class="flex items-center gap-1.5 text-xs font-bold text-slate-600 cursor-pointer">
+                                <input type="radio" name="spice_${item.id}" value="Pedas" onchange="updateItemSpice(${item.id}, this.value)" class="w-4 h-4 text-red-600 focus:ring-red-500" ${currentSpice === 'Pedas' ? 'checked' : ''}>
+                                Pedas 🌶️
+                            </label>
+                        </div>
+                    `;
+                }
+
+                const placeholderTeks = showSpice ? "Ketik catatan (opsional)..." : "Ketik catatan (contoh: es sedikit)...";
+
+                container.innerHTML += `
+                    <div class="bg-slate-50 p-3 rounded-xl mb-3 border border-slate-100 flex flex-col gap-2">
+                        <div class="flex justify-between items-start">
+                            <div class="flex-1">
+                                <h4 class="font-bold text-sm text-slate-800">${item.name}</h4>
+                                <p class="text-xs font-bold text-blue-600">Rp ${item.price.toLocaleString('id-ID')}</p>
+                            </div>
+                            <div class="flex items-center gap-2 bg-white p-1 rounded-lg border border-slate-200 shadow-sm ml-2 shrink-0">
+                                <button onclick="changeQty(${item.id}, -1)" class="w-7 h-7 flex items-center justify-center bg-slate-100 text-slate-600 rounded font-bold hover:bg-slate-200">-</button>
+                                <span class="font-bold text-sm text-slate-800 w-4 text-center">${item.qty}</span>
+                                <button onclick="changeQty(${item.id}, 1)" class="w-7 h-7 flex items-center justify-center bg-blue-600 text-white rounded font-bold hover:bg-blue-700">+</button>
+                            </div>
+                        </div>
+                        
+                        <div class="flex flex-col pt-2 border-t border-slate-200">
+                            ${spiceHtml}
+                            <input type="text" onchange="updateItemNote(${item.id}, this.value)" value="${currentNote}" placeholder="${placeholderTeks}" class="w-full p-2.5 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-slate-700">
+                        </div>
+                    </div>
+                `;
+            });
+        }
+
+        function updateItemSpice(id, value) {
+            const item = cart.find(c => c.id === id);
+            if(item) item.spice = value;
+        }
+
+        function updateItemNote(id, value) {
+            const item = cart.find(c => c.id === id);
+            if(item) item.note = value;
+        }
+
+        // ==========================================
+        // 5. NAVIGASI MODAL & POP-UP & QRIS
+        // ==========================================
+        function openCart() { renderCartModal(); showModal('modal-cart', 'modal-cart-content'); }
+        function closeCart() { hideModal('modal-cart', 'modal-cart-content'); }
+        
+        function openCheckout() { 
+            closeCart(); 
+            setTimeout(() => showModal('modal-checkout', 'modal-checkout-content'), 200); 
+        }
+        function closeCheckout() { hideModal('modal-checkout', 'modal-checkout-content'); }
+
+        // MENGATUR TAMPILAN GAMBAR QRIS
+        function toggleQrisDisplay() {
+            const bayar = document.getElementById('input-pembayaran').value;
+            const qrisArea = document.getElementById('qris-area');
+            
+            if(bayar === 'QRIS') {
+                qrisArea.classList.remove('hidden');
+                qrisArea.classList.add('flex');
+                
+                let total = 0;
+                cart.forEach(c => total += (c.price * c.qty));
+                document.getElementById('qris-total-text').innerText = `Rp ${total.toLocaleString('id-ID')}`;
+            } else {
+                qrisArea.classList.add('hidden');
+                qrisArea.classList.remove('flex');
+            }
+        }
+
+        function showConfirmation() {
+            const nama = document.getElementById('input-nama').value;
+            const meja = document.getElementById('input-meja').value;
+            const metodeBayar = document.getElementById('input-pembayaran').value;
+
+            if(!nama || !meja) { alert("Mohon isi Nama dan Pilih Meja terlebih dahulu!"); return; }
+            
+            // LOGIKA BARU: Cegah lanjut jika bayar QRIS tapi belum upload bukti
+            if(metodeBayar === 'QRIS') {
+                const bukti = document.getElementById('base64-bukti').value;
+                if(!bukti) {
+                    alert("Mohon upload Bukti Transfer (Screenshot) terlebih dahulu!");
+                    return;
+                }
+            }
+            
+            const confirmText = document.getElementById('teks-konfirmasi');
+            if(metodeBayar === 'QRIS') {
+                confirmText.innerHTML = "Anda memilih metode <b>QRIS</b> dan bukti telah diunggah. Kasir kami akan memverifikasi sebelum pesanan diproses ke dapur.";
+            } else {
+                confirmText.innerHTML = "Anda memilih <b>Tunai / Kasir</b>. Setelah Anda klik Kirim Pesanan, silakan tunggu. Staf kami akan menghampiri meja Anda untuk menyelesaikan pembayaran.";
+            }
+            
+            closeCheckout();
+            setTimeout(() => showModal('modal-confirm', 'modal-confirm-content'), 200);
+        }
+
+        // ==========================================
+        // 6. PROSES KIRIM KE FIREBASE CLOUD
+        // ==========================================
+        function sendOrderToKasir() {
+            const btn = document.getElementById('btn-final-setuju');
+            btn.innerHTML = "Memproses...";
+            btn.disabled = true;
+
+            const orderData = {
+                customer: document.getElementById('input-nama').value,
+                table: document.getElementById('input-meja').value,
+                paymentMethod: document.getElementById('input-pembayaran').value,
+                paymentProof: document.getElementById('base64-bukti').value, // BARU: Bukti masuk ke database
+                items: cart,
+                timestamp: Date.now()
+            };
+
+            const newOrderRef = db.ref('pesanan_masuk').push();
+            newOrderRef.set(orderData).then(() => {
+                hideModal('modal-confirm', 'modal-confirm-content');
+                setTimeout(() => {
+                    const successModal = document.getElementById('modal-success');
+                    successModal.classList.remove('hidden');
+                    successModal.classList.add('flex');
+                }, 200);
+            }).catch((error) => {
+                alert("Gagal mengirim pesanan. Periksa koneksi internet Anda.");
+                btn.innerHTML = "Kirim Pesanan";
+                btn.disabled = false;
+            });
+        }
+
+        // ==========================================
+        // 7. TOMBOL TUTUP BARU (RESET SETELAH SUKSES)
+        // ==========================================
+        function resetMenuAfterSuccess() {
+            const successModal = document.getElementById('modal-success');
+            successModal.classList.add('hidden');
+            successModal.classList.remove('flex');
+            
+            cart = [];
+            updateCartUI();
+            
+            document.getElementById('input-nama').value = '';
+            document.getElementById('input-meja').value = '';
+            
+            // Kembalikan form pembayaran ke awal
+            document.getElementById('input-pembayaran').value = 'Tunai di Kasir';
+            toggleQrisDisplay();
+            
+            const btn = document.getElementById('btn-final-setuju');
+            btn.innerHTML = "Kirim Pesanan";
+            btn.disabled = false;
+        }
+
+        // ==========================================
+        // HELPER ANIMASI INTERAKTIF
+        // ==========================================
+        function showModal(bgId, contentId) {
+            const bg = document.getElementById(bgId);
+            const content = document.getElementById(contentId);
+            if(!bg || !content) return;
+            bg.classList.remove('hidden');
+            bg.classList.add('flex');
+            setTimeout(() => {
+                content.classList.remove('modal-enter');
+                content.classList.add('modal-enter-active');
+            }, 10);
+            setTimeout(() => {
+                content.classList.remove('modal-enter-active');
+                content.classList.add('modal-exit');
+            }, 210);
+        }
+
+        function hideModal(bgId, contentId) {
+            const bg = document.getElementById(bgId);
+            const content = document.getElementById(contentId);
+            if(!bg || !content) return;
+            content.classList.remove('modal-exit');
+            content.classList.add('modal-exit-active');
+            setTimeout(() => {
+                content.classList.remove('modal-exit-active');
+                content.classList.add('modal-enter');
+                bg.classList.add('hidden');
+                bg.classList.remove('flex');
+            }, 200);
+        }
+
+        // BARU: Fungsi untuk menyedot gambar struk menjadi teks (Base64)
+        const inputBukti = document.getElementById('input-bukti');
+        if (inputBukti) {
+            inputBukti.addEventListener('change', function(e) {
+                const file = e.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = function(event) {
+                        document.getElementById('base64-bukti').value = event.target.result;
+                    };
+                    reader.readAsDataURL(file);
+                }
+            });
+        }
+
+        // Jalankan render pertama kali saat web dibuka
+        renderCategoryTabs();
+        renderMenu();
+    </script>
+</body>
+</html>
